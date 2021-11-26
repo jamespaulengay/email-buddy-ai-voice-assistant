@@ -1,152 +1,43 @@
-const express = require('express');
-const app = express();
-const port = 3000 || process.env.NODE_ENV;
-//imap
-const Imap = require('imap');
-const inspect = require('util').inspect;
-const {
-  simpleParser
-} = require('mailparser');
+const nodemailer=require('nodemailer');
+const {google}=require('googleapis');
 
-//build
-var fs = require('fs');
-var base64 = require('base64-stream');
-const {
-  Base64Decode
-} = require("base64-stream");
-
-function toUpper(thing) {
-  return thing && thing.toUpperCase ? thing.toUpperCase() : thing;
+const config={
+  CLIENT_ID:"756303327390-mivablbspt472rkfeb3brgckhr1nevkl.apps.googleusercontent.com",
+  CLIENT_SECRET:"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",
+  REDIRECT_URI:"https://developers.google.com/oauthplayground",
+  REFRESH_TOKEN:"1//04CozvaNEFGr8CgYIARAAGAQSNwF-L9IrCABdqubq0aNaOlj100PsWdwN33zHq5kcOeN0yADdltz8eA9DkYCGwMjQXT99hufa0Io"
 }
 
-//constructor JSON
-var mailbox = [];
-var mail = {
-  date: "",
-  Subject: "",
-  Sender: "",
-  Receiver: "",
-  Content: "",
-  Attachment: null
-};
-var test;
-//this is to build attachment to a fully built file
-/*
-function buildAttMessageFunction(attachment) {
-  var filename = attachment.params.name;
-  var encoding = attachment.encoding;
+const oAuth=new google.auth.OAuth2(config.CLIENT_ID,config.CLIENT_SECRET,config.REDIRECT_URI);
+oAuth.setCredentials({refresh_token:config.REFRESH_TOKEN})
 
-  return function (msg, seqno) {
-    var prefix = '(#' + seqno + ') ';
-    msg.on('body', function(stream, info) {
-      //Create a write stream so that we can stream the attachment to file;
-      console.log(prefix + 'Streaming this attachment to file', filename, info);
-      var writeStream = fs.createWriteStream(__dirname+'/'+filename);
-      writeStream.on('finish', function() {
-        console.log(prefix + 'Done writing to file %s', filename);
-      });
-
-      //stream.pipe(writeStream); this would write base64 data to the file.
-      //so we decode during streaming using
-      if (toUpper(encoding) === 'BASE64') {
-        //the stream is base64 encoded, so here the stream is decode on the fly and piped to the write stream (file)
-        stream.pipe(new Base64Decode()).pipe(writeStream);
-      } else  {
-        //here we have none or some other decoding streamed directly to the file which renders it useless probably
-       stream.pipe(writeStream);
+async function sendMail(){
+  try {
+    const accesstoken=await oAuth.getAccessToken()
+    const transport=nodemailer.createTransport({
+      service:'gmail',
+      auth:{
+        type:'OAuth2',
+        user:'supernikki1234@gmail.com',
+        clientId:config.CLIENT_ID,
+        clientSecret:config.CLIENT_SECRET,
+        refreshToken:config.REFRESH_TOKEN,
+        accessToken:accesstoken
       }
+    })
 
-    });
-
-    msg.once('end', function() {
-    //  arr=[...new Set(arr)]
-      // console.log(arr);
-      // console.log(prefix + 'Finished attachment %s', filename);
-    });
-
-  };
-}
-*/
-
-
-//this is to iterate each email to see if it has any disposition/attachment
-function findAttachmentParts(struct, attachments) {
-  attachments = attachments || [];
-  //  console.log(attachments);
-  for (var i = 0, len = struct.length, r; i < len; ++i) {
-    if (Array.isArray(struct[i])) {
-      findAttachmentParts(struct[i], attachments);
-    } else {
-      if (struct[i].disposition && ['INLINE', 'ATTACHMENT'].indexOf(toUpper(struct[i].disposition.type)) > -1) {
-        attachments.push(struct[i]);
-      }
+    const mail={
+      from:'Email Buddy <supernikki1234@gmail.com>',
+      to:'supernikki1234@gmail.com',
+      subject:'Test[2]',
+      text:'Testing the API[2]',
     }
+    const result=await transport.sendMail(mail)
+    return result
+  } catch (e) {
+    console.log(e);
   }
-  return attachments;
 }
-
-
-var imap = new Imap({
-  user: 'supernikki1234@gmail.com',
-  password: 'HerbieChap1899',
-  host: 'imap.gmail.com',
-  port: 993,
-  tls: true,
-  tlsOptions: {
-    rejectUnauthorized: false
-  }
-});
-imap.once('ready', () => {
-  imap.openBox('INBOX', false, (err,box) => {
-    imap.search(['ALL', ['SINCE', new Date()]], (err, results) => {
-      const f = imap.seq.fetch('1:*', {
-          bodies: ['HEADER.FIELDS (FROM TO SUBJECT DATE)'],
-        struct: true
-      });
-      f.on('message', (msg, seqno) => {
-        //console.log(msg);
-          msg.on('body', stream => {
-          test=simpleParser(stream);
-          // var mail = {
-          // date: parsed.date,
-          // Subject: parsed.subject,
-          // Sender: parsed.from.value,
-          // Receiver: parsed.to.value,
-          // Content: "",
-          // Attachment: null
-          test.then(res=>{
-            console.log(res);
-          })
-        });
-        //get attributes- attachments
-        msg.once('attributes', attrs => {
-          var attachments = findAttachmentParts(attrs.struct);
-          for (var i = 0, len = attachments.length; i < len; ++i) {
-            var attachment = attachments[i];
-            var f = imap.fetch(attrs.uid, { //do not use imap.seq.fetch here
-              bodies: [attachment.partID],
-              struct: true
-            });
-            console.log(attachment);
-            //build function to process attachment message
-            //f.on('message', buildAttMessageFunction(attachment));
-          }
-        });
-       });
-
-      f.once('error', ex => {
-        console.log("error:" + ex);
-        return Promise.reject(ex);
-      });
-      f.once('end', () => {
-        console.log('Done fetching all messages!');
-        imap.end();
-      });
-    });
-  });
-});
-imap.connect();
-
-app.listen(port, () => {
-  console.log(`listening on port: ${port}`);
-})
+sendMail().then(result=>{
+  console.log(result);
+}).catch(e=>console.log(e))
